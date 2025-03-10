@@ -7,6 +7,11 @@ import subprocess
 import time
 from datetime import datetime, timedelta
 from collections import deque
+from rich.console import Console
+from rich.table import Table
+from rich.progress import Progress
+from rich.panel import Panel
+from rich.text import Text
 
 # Configuration
 LOG_FILE = "pylint_monitor.log"
@@ -24,6 +29,7 @@ class LintMonitor:
     def __init__(self):
         self.history = deque()
         self.last_score = None
+        self.console = Console()
 
     def get_pylint_score(self):
         """Run pylint and extract the score"""
@@ -61,8 +67,12 @@ class LintMonitor:
 
     def run(self):
         """Main monitoring loop"""
-        print(f"Starting lint monitor. Logging to {LOG_FILE}")
-        print("Press Ctrl+C to stop...")
+        self.console.print(Panel(
+            f"Starting lint monitor. Logging to [bold cyan]{LOG_FILE}[/]\n"
+            "Press [bold red]Ctrl+C[/] to stop...",
+            title="Lint Monitor",
+            border_style="green"
+        ))
 
         try:
             while True:
@@ -79,21 +89,43 @@ class LintMonitor:
                     # Calculate improvements
                     improvements = self.calculate_improvements()
 
-                    # Format output
-                    log_entry = f"{timestamp.isoformat()} - Current: {score:.2f}/10"
+                    # Create rich table for display
+                    table = Table(title="Lint Quality Monitor", show_header=True, header_style="bold magenta")
+                    table.add_column("Metric", style="cyan")
+                    table.add_column("Value", justify="right")
+                    
+                    # Add current score
+                    score_style = "green" if score >= 9.0 else "yellow" if score >= 7.0 else "red"
+                    table.add_row("Current Score", Text(f"{score:.2f}/10", style=score_style))
+                    
+                    # Add improvements
                     for window, improvement in improvements.items():
                         if improvement is not None:
-                            log_entry += f", {window}: {improvement:+.2f}"
-
-                    # Log to file and print
+                            imp_style = "green" if improvement > 0 else "red"
+                            table.add_row(
+                                f"Improvement ({window})", 
+                                Text(f"{improvement:+.2f}", style=imp_style)
+                            )
+                    
+                    # Create panel with timestamp
+                    panel = Panel(
+                        table,
+                        title=f"Lint Quality at {timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
+                        border_style="blue"
+                    )
+                    
+                    # Log to file
                     with open(LOG_FILE, "a", encoding="utf-8") as f:
-                        f.write(log_entry + "\n")
-                    print(log_entry)
+                        f.write(f"{timestamp.isoformat()} - Current: {score:.2f}/10\n")
+                    
+                    # Clear console and display new output
+                    self.console.clear()
+                    self.console.print(panel)
 
                 time.sleep(INTERVAL)
 
         except KeyboardInterrupt:
-            print("\nMonitoring stopped.")
+            self.console.print("\n[bold red]Monitoring stopped.[/]")
 
 
 if __name__ == "__main__":
